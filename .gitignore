@@ -1,0 +1,9 @@
+# Compiler output
+cache/
+out/
+
+# Environment
+.env
+
+# Foundry
+broadcast/

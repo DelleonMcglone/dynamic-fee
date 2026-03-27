@@ -15,6 +15,7 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
+import {FullMath} from "v4-core/libraries/FullMath.sol";
 
 import {OracleManager} from "./libraries/OracleManager.sol";
 import {DeviationMonitor} from "./libraries/DeviationMonitor.sol";

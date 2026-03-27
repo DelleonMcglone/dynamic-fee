@@ -24,20 +24,6 @@ library FeeCalculator {
 
     uint24 internal constant BPS_MULTIPLIER = 100; // 1 bps = 100 hundredths-of-bip
 
-    /// @notice Determines whether a swap moves the pool price toward or away from the oracle.
-    /// @param priceBefore Pool price before swap (18 dec).
-    /// @param priceAfter  Pool price after swap (18 dec).
-    /// @param oraclePrice Oracle price (18 dec).
-    function determineDirection(uint256 priceBefore, uint256 priceAfter, uint256 oraclePrice)
-        internal
-        pure
-        returns (Direction)
-    {
-        uint256 devBefore = priceBefore > oraclePrice ? priceBefore - oraclePrice : oraclePrice - priceBefore;
-        uint256 devAfter = priceAfter > oraclePrice ? priceAfter - oraclePrice : oraclePrice - priceAfter;
-        return devAfter <= devBefore ? Direction.TOWARD : Direction.AWAY;
-    }
-
     /// @notice Calculates the fee for a swap given its zone and direction.
     /// @param zone Current deviation zone.
     /// @param direction Whether swap moves toward or away from oracle.

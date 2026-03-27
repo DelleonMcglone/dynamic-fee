@@ -7,8 +7,7 @@ import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
-import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
-import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
 import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
@@ -24,7 +23,6 @@ import {FeeCalculator} from "../../src/libraries/FeeCalculator.sol";
 import {MockOracle} from "../mocks/MockOracle.sol";
 import {HookDeployer} from "../mocks/HookDeployer.sol";
 
-/// @notice Full-flow integration tests simulating directional fee scenarios.
 contract DynamicFeeFlowTest is Test {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -50,7 +48,6 @@ contract DynamicFeeFlowTest is Test {
         swapRouter = new PoolSwapTest(manager);
         modifyLiquidityRouter = new PoolModifyLiquidityTest(manager);
 
-        // Oracle: 8 decimals, token0/token1 = 1.0 (matches 1:1 pool price)
         oracle = new MockOracle(8, 1e8);
 
         token0 = new MockERC20("Token0", "T0", 18);
@@ -68,7 +65,8 @@ contract DynamicFeeFlowTest is Test {
         token0.approve(address(modifyLiquidityRouter), type(uint256).max);
         token1.approve(address(modifyLiquidityRouter), type(uint256).max);
 
-        uint160 flags = uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
+        // Flags: beforeSwap + afterSwap (no beforeInitialize)
+        uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
         bytes memory creationCode =
             abi.encodePacked(type(DynamicFee).creationCode, abi.encode(manager, address(this)));
         (address hookAddr, bytes32 salt) = HookDeployer.find(address(this), flags, creationCode);
@@ -89,7 +87,7 @@ contract DynamicFeeFlowTest is Test {
         });
         poolId = poolKey.toId();
 
-        hook.configurePool(poolId, address(oracle), 20_000, DEFAULT_THRESHOLDS);
+        hook.configurePool(poolId, address(oracle), 20_000, 3000, int8(0), DEFAULT_THRESHOLDS);
         manager.initialize(poolKey, SQRT_PRICE_1_1);
 
         modifyLiquidityRouter.modifyLiquidity(
@@ -99,13 +97,10 @@ contract DynamicFeeFlowTest is Test {
         );
     }
 
-    /// @notice Test that after a swap moves pool price away from oracle, the zone changes.
     function test_zoneTransition_AfterSwap() public {
-        // Initially in TIGHT zone (pool=oracle=1.0)
         DeviationMonitor.Zone zoneBefore = hook.currentZones(poolId);
         assertEq(uint256(zoneBefore), uint256(DeviationMonitor.Zone.TIGHT));
 
-        // Large swap to move pool price significantly
         swapRouter.swap(
             poolKey,
             SwapParams({zeroForOne: true, amountSpecified: -100e18, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
@@ -113,14 +108,11 @@ contract DynamicFeeFlowTest is Test {
             new bytes(0)
         );
 
-        // Zone should have transitioned after the large swap
         DeviationMonitor.Zone zoneAfter = hook.currentZones(poolId);
         assertTrue(uint256(zoneAfter) > uint256(DeviationMonitor.Zone.TIGHT), "Zone should have escalated");
     }
 
-    /// @notice Oracle price change should affect subsequent swap fees.
     function test_oraclePriceChange_AffectsFees() public {
-        // First swap at oracle=1.0 (pool also ~1.0, should be TIGHT zone)
         swapRouter.swap(
             poolKey,
             SwapParams({zeroForOne: true, amountSpecified: -1e16, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
@@ -128,10 +120,8 @@ contract DynamicFeeFlowTest is Test {
             new bytes(0)
         );
 
-        // Change oracle to create large deviation
-        oracle.setAnswer(2e8); // Oracle says price should be 2.0 but pool is ~1.0
+        oracle.setAnswer(2e8); // Oracle says 2.0 but pool is ~1.0
 
-        // Second swap — pool is now significantly deviated from oracle
         swapRouter.swap(
             poolKey,
             SwapParams({zeroForOne: true, amountSpecified: -1e16, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
@@ -139,71 +129,76 @@ contract DynamicFeeFlowTest is Test {
             new bytes(0)
         );
 
-        // Zone should reflect the deviation
         DeviationMonitor.Zone zone = hook.currentZones(poolId);
         assertTrue(uint256(zone) >= uint256(DeviationMonitor.Zone.EXTREME), "Should be in extreme zone");
     }
 
-    /// @notice Multiple sequential swaps demonstrate fee changes.
     function test_multipleSwaps_FeeProgression() public {
-        // Small swap
         swapRouter.swap(
             poolKey,
             SwapParams({zeroForOne: true, amountSpecified: -1e17, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             new bytes(0)
         );
-
         DeviationMonitor.Zone zone1 = hook.currentZones(poolId);
 
-        // Medium swap
         swapRouter.swap(
             poolKey,
             SwapParams({zeroForOne: true, amountSpecified: -10e18, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             new bytes(0)
         );
-
         DeviationMonitor.Zone zone2 = hook.currentZones(poolId);
 
-        // Zone should escalate or stay the same with continued directional pressure
         assertTrue(uint256(zone2) >= uint256(zone1), "Zone should escalate with continued pressure");
     }
 
-    /// @notice Swap back toward oracle should produce lower fee zone.
     function test_swapTowardOracle_ReducesZone() public {
-        // Push price away first
         swapRouter.swap(
             poolKey,
             SwapParams({zeroForOne: true, amountSpecified: -50e18, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             new bytes(0)
         );
-
         DeviationMonitor.Zone zoneAfterPush = hook.currentZones(poolId);
 
-        // Swap back (oneForZero) toward oracle
         swapRouter.swap(
             poolKey,
             SwapParams({zeroForOne: false, amountSpecified: -50e18, sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1}),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             new bytes(0)
         );
-
         DeviationMonitor.Zone zoneAfterReturn = hook.currentZones(poolId);
 
         assertTrue(uint256(zoneAfterReturn) <= uint256(zoneAfterPush), "Zone should decrease when moving toward oracle");
     }
 
-    /// @notice Verify previewFee returns consistent results.
     function test_previewFee() public view {
-        (uint24 fee, DeviationMonitor.Zone zone, FeeCalculator.Direction direction) =
-            hook.previewFee(poolKey, true);
-
+        (uint24 fee, DeviationMonitor.Zone zone, FeeCalculator.Direction direction) = hook.previewFee(poolKey, true);
         assertTrue(fee > 0, "Fee should be non-zero");
         assertTrue(uint256(zone) <= uint256(DeviationMonitor.Zone.EXTREME), "Zone should be valid");
-        assertTrue(
-            uint256(direction) <= uint256(FeeCalculator.Direction.AWAY), "Direction should be valid"
+        assertTrue(uint256(direction) <= uint256(FeeCalculator.Direction.AWAY), "Direction should be valid");
+    }
+
+    /// @notice Stale oracle in afterSwap should not block the swap — just skip zone update.
+    function test_staleOracle_AfterSwap_DoesNotBlock() public {
+        // First swap normally
+        swapRouter.swap(
+            poolKey,
+            SwapParams({zeroForOne: true, amountSpecified: -1e16, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            new bytes(0)
+        );
+
+        // Make oracle stale
+        vm.warp(block.timestamp + 2 hours);
+
+        // Swap should still work (fallback fee in beforeSwap, skip zone update in afterSwap)
+        swapRouter.swap(
+            poolKey,
+            SwapParams({zeroForOne: false, amountSpecified: -1e16, sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            new bytes(0)
         );
     }
 

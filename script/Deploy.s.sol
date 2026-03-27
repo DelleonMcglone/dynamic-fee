@@ -13,7 +13,7 @@ contract DeployDynamicFee is Script {
         address poolManager = vm.envAddress("POOL_MANAGER");
         address owner = vm.envAddress("OWNER");
 
-        uint160 flags = uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
+        uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
         uint160 flagsMask = uint160(Hooks.ALL_HOOK_MASK);
 
         bytes memory creationCode =

@@ -16,6 +16,7 @@ contract CreatePools is Script {
 
     uint256[4] internal thresholds = [uint256(100), 300, 500, 1000];
     uint24 internal constant MAX_FEE = 20_000;
+    uint24 internal constant FALLBACK_FEE = 3000; // 30 bps
 
     function run() external {
         IPoolManager mgr = IPoolManager(vm.envAddress("POOL_MANAGER"));
@@ -28,9 +29,12 @@ contract CreatePools is Script {
 
         vm.startBroadcast();
 
-        _createPool(mgr, hook, hooks, weth, usdc, vm.envAddress("CHAINLINK_ETH_USD"), 4339505376871019468404402984534016);
-        _createPool(mgr, hook, hooks, link, usdc, vm.envAddress("CHAINLINK_LINK_USD"), 316227766016837933199889);
-        _createPool(mgr, hook, hooks, weth, link, vm.envAddress("CHAINLINK_ETH_USD"), 1371958028948904769498980352);
+        // WETH(18dec)/USDC(6dec): decimalDiff = 12
+        _createPool(mgr, hook, hooks, weth, usdc, vm.envAddress("CHAINLINK_ETH_USD"), int8(12), 4339505376871019468404402984534016);
+        // LINK(18dec)/USDC(6dec): decimalDiff = 12
+        _createPool(mgr, hook, hooks, link, usdc, vm.envAddress("CHAINLINK_LINK_USD"), int8(12), 316227766016837933199889);
+        // WETH(18dec)/LINK(18dec): decimalDiff = 0
+        _createPool(mgr, hook, hooks, weth, link, vm.envAddress("CHAINLINK_ETH_USD"), int8(0), 1371958028948904769498980352);
 
         vm.stopBroadcast();
     }
@@ -42,6 +46,7 @@ contract CreatePools is Script {
         address tokenA,
         address tokenB,
         address oracleFeed,
+        int8 decimalDiff,
         uint160 sqrtPrice
     ) internal {
         (address t0, address t1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
@@ -54,7 +59,7 @@ contract CreatePools is Script {
         });
         PoolId poolId = poolKey.toId();
 
-        hook.configurePool(poolId, oracleFeed, MAX_FEE, thresholds);
+        hook.configurePool(poolId, oracleFeed, MAX_FEE, FALLBACK_FEE, decimalDiff, thresholds);
         mgr.initialize(poolKey, sqrtPrice);
 
         console.log("Pool created. PoolId:");

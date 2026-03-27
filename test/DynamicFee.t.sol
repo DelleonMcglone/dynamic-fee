@@ -47,19 +47,18 @@ contract DynamicFeeTest is Test {
 
     uint256[4] DEFAULT_THRESHOLDS = [uint256(100), 300, 500, 1000];
     uint24 constant DEFAULT_MAX_FEE = 20_000; // 200 bps
+    uint24 constant DEFAULT_FALLBACK_FEE = 3000; // 30 bps
+    int8 constant DEFAULT_DECIMAL_DIFF = 0; // Both tokens 18 decimals
 
     function setUp() public {
-        // Deploy PoolManager
         manager = new PoolManager(address(this));
-
-        // Deploy routers
         swapRouter = new PoolSwapTest(manager);
         modifyLiquidityRouter = new PoolModifyLiquidityTest(manager);
 
-        // Deploy oracle — 8 decimals, $3000 ETH price
-        oracle = new MockOracle(8, 3000e8);
+        // Deploy oracle — 8 decimals, price = 1.0 (matches 1:1 pool)
+        oracle = new MockOracle(8, 1e8);
 
-        // Deploy tokens
+        // Deploy tokens (both 18 decimals)
         token0 = new MockERC20("Token0", "T0", 18);
         token1 = new MockERC20("Token1", "T1", 18);
         if (address(token0) > address(token1)) {
@@ -68,7 +67,6 @@ contract DynamicFeeTest is Test {
         currency0 = Currency.wrap(address(token0));
         currency1 = Currency.wrap(address(token1));
 
-        // Mint tokens
         token0.mint(address(this), 1000e18);
         token1.mint(address(this), 1000e18);
         token0.approve(address(swapRouter), type(uint256).max);
@@ -76,13 +74,12 @@ contract DynamicFeeTest is Test {
         token0.approve(address(modifyLiquidityRouter), type(uint256).max);
         token1.approve(address(modifyLiquidityRouter), type(uint256).max);
 
-        // Deploy hook to address with correct flag bits
-        uint160 flags = uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
+        // Deploy hook — flags: beforeSwap + afterSwap (no beforeInitialize)
+        uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
         bytes memory creationCode =
             abi.encodePacked(type(DynamicFee).creationCode, abi.encode(manager, address(this)));
         (address hookAddr, bytes32 salt) = HookDeployer.find(address(this), flags, creationCode);
 
-        // Deploy via CREATE2
         address deployed;
         assembly {
             deployed := create2(0, add(creationCode, 0x20), mload(creationCode), salt)
@@ -90,7 +87,6 @@ contract DynamicFeeTest is Test {
         require(deployed == hookAddr, "Hook address mismatch");
         hook = DynamicFee(deployed);
 
-        // Configure pool
         poolKey = PoolKey({
             currency0: currency0,
             currency1: currency1,
@@ -100,13 +96,11 @@ contract DynamicFeeTest is Test {
         });
         poolId = poolKey.toId();
 
-        // Configure hook for this pool
-        hook.configurePool(poolId, address(oracle), DEFAULT_MAX_FEE, DEFAULT_THRESHOLDS);
+        // Configure with new signature: oracle, maxFee, fallbackFee, decimalDiff, thresholds
+        hook.configurePool(poolId, address(oracle), DEFAULT_MAX_FEE, DEFAULT_FALLBACK_FEE, DEFAULT_DECIMAL_DIFF, DEFAULT_THRESHOLDS);
 
-        // Initialize pool at 1:1 price
         manager.initialize(poolKey, SQRT_PRICE_1_1);
 
-        // Add liquidity — wide range
         modifyLiquidityRouter.modifyLiquidity(
             poolKey,
             ModifyLiquidityParams({tickLower: -887220, tickUpper: 887220, liquidityDelta: 100e18, salt: 0}),
@@ -118,11 +112,11 @@ contract DynamicFeeTest is Test {
 
     function test_getOraclePrice_Success() public view {
         uint256 price = OracleManager.getOraclePrice(address(oracle));
-        assertEq(price, 3000e18, "Price should be 3000 * 1e18");
+        assertEq(price, 1e18, "Price should be 1e18 (1.0)");
     }
 
     function test_getOraclePrice_Stale() public {
-        vm.warp(2 hours + 1); // ensure block.timestamp is large enough
+        vm.warp(2 hours + 1);
         oracle.setStale();
         vm.expectRevert();
         this.externalGetOraclePrice(address(oracle));
@@ -140,25 +134,51 @@ contract DynamicFeeTest is Test {
         this.externalGetOraclePrice(address(oracle));
     }
 
-    /// @dev External wrapper so vm.expectRevert can catch internal library reverts.
     function externalGetOraclePrice(address feed) external view returns (uint256) {
         return OracleManager.getOraclePrice(feed);
+    }
+
+    // ═══════════════════════════ Safe Oracle Tests ═══════════════════════════
+
+    function test_safeGetOraclePrice_Success() public view {
+        (bool ok, uint256 price) = OracleManager.safeGetOraclePrice(address(oracle));
+        assertTrue(ok, "Should succeed");
+        assertEq(price, 1e18);
+    }
+
+    function test_safeGetOraclePrice_Stale() public {
+        vm.warp(2 hours + 1);
+        oracle.setStale();
+        (bool ok,) = OracleManager.safeGetOraclePrice(address(oracle));
+        assertFalse(ok, "Should fail gracefully");
+    }
+
+    function test_safeGetOraclePrice_Invalid() public {
+        oracle.setAnswer(-1);
+        (bool ok,) = OracleManager.safeGetOraclePrice(address(oracle));
+        assertFalse(ok, "Should fail gracefully");
     }
 
     // ═══════════════════════════ Deviation Tests ═══════════════════════════
 
     function test_calculateDeviation() public pure {
-        // Pool at 3030 vs oracle at 3000 = 1% = 100 bps
         uint256 dev = DeviationMonitor.calculateDeviation(3030e18, 3000e18);
         assertEq(dev, 100, "Deviation should be 100 bps");
 
-        // Pool at 2850 vs oracle at 3000 = 5% = 500 bps
         dev = DeviationMonitor.calculateDeviation(2850e18, 3000e18);
         assertEq(dev, 500, "Deviation should be 500 bps");
 
-        // Pool = oracle = 0 deviation
         dev = DeviationMonitor.calculateDeviation(3000e18, 3000e18);
         assertEq(dev, 0, "Deviation should be 0");
+    }
+
+    function test_calculateDeviation_RevertsOnZeroOracle() public {
+        vm.expectRevert(DeviationMonitor.ZeroOraclePrice.selector);
+        this.externalCalculateDeviation(1000e18, 0);
+    }
+
+    function externalCalculateDeviation(uint256 a, uint256 b) external pure returns (uint256) {
+        return DeviationMonitor.calculateDeviation(a, b);
     }
 
     function test_classifyZone_AllZones() public pure {
@@ -175,69 +195,26 @@ contract DynamicFeeTest is Test {
         assertEq(uint256(DeviationMonitor.classifyZone(1500, t)), uint256(DeviationMonitor.Zone.EXTREME));
     }
 
-    // ═══════════════════════════ Direction Tests ═══════════════════════════
-
-    function test_determineDirection_Toward() public pure {
-        // Pool above oracle, price drops → toward
-        assertEq(
-            uint256(FeeCalculator.determineDirection(3100e18, 3050e18, 3000e18)),
-            uint256(FeeCalculator.Direction.TOWARD)
-        );
-        // Pool below oracle, price rises → toward
-        assertEq(
-            uint256(FeeCalculator.determineDirection(2900e18, 2950e18, 3000e18)),
-            uint256(FeeCalculator.Direction.TOWARD)
-        );
-    }
-
-    function test_determineDirection_Away() public pure {
-        // Pool above oracle, price rises → away
-        assertEq(
-            uint256(FeeCalculator.determineDirection(3100e18, 3150e18, 3000e18)),
-            uint256(FeeCalculator.Direction.AWAY)
-        );
-        // Pool below oracle, price drops → away
-        assertEq(
-            uint256(FeeCalculator.determineDirection(2900e18, 2850e18, 3000e18)),
-            uint256(FeeCalculator.Direction.AWAY)
-        );
-    }
-
     // ═══════════════════════════ Fee Calculation Tests ═══════════════════════════
 
     function test_calculateFee_AllCombinations() public pure {
         uint24 max = 20_000;
 
-        // TIGHT zone
         assertEq(FeeCalculator.calculateFee(DeviationMonitor.Zone.TIGHT, FeeCalculator.Direction.TOWARD, max), 500);
         assertEq(FeeCalculator.calculateFee(DeviationMonitor.Zone.TIGHT, FeeCalculator.Direction.AWAY, max), 1000);
-
-        // NORMAL zone
         assertEq(FeeCalculator.calculateFee(DeviationMonitor.Zone.NORMAL, FeeCalculator.Direction.TOWARD, max), 1000);
         assertEq(FeeCalculator.calculateFee(DeviationMonitor.Zone.NORMAL, FeeCalculator.Direction.AWAY, max), 3000);
-
-        // ELEVATED zone
-        assertEq(
-            FeeCalculator.calculateFee(DeviationMonitor.Zone.ELEVATED, FeeCalculator.Direction.TOWARD, max), 2000
-        );
+        assertEq(FeeCalculator.calculateFee(DeviationMonitor.Zone.ELEVATED, FeeCalculator.Direction.TOWARD, max), 2000);
         assertEq(FeeCalculator.calculateFee(DeviationMonitor.Zone.ELEVATED, FeeCalculator.Direction.AWAY, max), 5000);
-
-        // HIGH zone
         assertEq(FeeCalculator.calculateFee(DeviationMonitor.Zone.HIGH, FeeCalculator.Direction.TOWARD, max), 3000);
         assertEq(FeeCalculator.calculateFee(DeviationMonitor.Zone.HIGH, FeeCalculator.Direction.AWAY, max), 10_000);
-
-        // EXTREME zone
-        assertEq(
-            FeeCalculator.calculateFee(DeviationMonitor.Zone.EXTREME, FeeCalculator.Direction.TOWARD, max), 5000
-        );
+        assertEq(FeeCalculator.calculateFee(DeviationMonitor.Zone.EXTREME, FeeCalculator.Direction.TOWARD, max), 5000);
         assertEq(FeeCalculator.calculateFee(DeviationMonitor.Zone.EXTREME, FeeCalculator.Direction.AWAY, max), 20_000);
     }
 
     function test_fee_RespectsMaxCap() public pure {
-        // Max fee = 5000 (50 bps) — EXTREME AWAY would be 20_000 but capped
         uint24 smallMax = 5000;
-        uint24 fee =
-            FeeCalculator.calculateFee(DeviationMonitor.Zone.EXTREME, FeeCalculator.Direction.AWAY, smallMax);
+        uint24 fee = FeeCalculator.calculateFee(DeviationMonitor.Zone.EXTREME, FeeCalculator.Direction.AWAY, smallMax);
         assertEq(fee, smallMax, "Fee should be capped at maxFee");
     }
 
@@ -246,24 +223,33 @@ contract DynamicFeeTest is Test {
     function test_configurePool_OnlyOwner() public {
         vm.prank(address(0xdead));
         vm.expectRevert();
-        hook.configurePool(poolId, address(oracle), DEFAULT_MAX_FEE, DEFAULT_THRESHOLDS);
+        hook.configurePool(poolId, address(oracle), DEFAULT_MAX_FEE, DEFAULT_FALLBACK_FEE, DEFAULT_DECIMAL_DIFF, DEFAULT_THRESHOLDS);
     }
 
     function test_configurePool_InvalidOracle() public {
         vm.expectRevert(DynamicFee.InvalidOracleAddress.selector);
-        hook.configurePool(poolId, address(0), DEFAULT_MAX_FEE, DEFAULT_THRESHOLDS);
+        hook.configurePool(poolId, address(0), DEFAULT_MAX_FEE, DEFAULT_FALLBACK_FEE, DEFAULT_DECIMAL_DIFF, DEFAULT_THRESHOLDS);
     }
 
     function test_configurePool_InvalidThresholds() public {
-        uint256[4] memory bad = [uint256(300), 100, 500, 1000]; // not ascending
+        uint256[4] memory bad = [uint256(300), 100, 500, 1000];
         vm.expectRevert(DynamicFee.InvalidThresholds.selector);
-        hook.configurePool(poolId, address(oracle), DEFAULT_MAX_FEE, bad);
+        hook.configurePool(poolId, address(oracle), DEFAULT_MAX_FEE, DEFAULT_FALLBACK_FEE, DEFAULT_DECIMAL_DIFF, bad);
+    }
+
+    function test_configurePool_InvalidFallbackFee() public {
+        // fallbackFee = 0 should revert
+        vm.expectRevert(DynamicFee.InvalidFallbackFee.selector);
+        hook.configurePool(poolId, address(oracle), DEFAULT_MAX_FEE, 0, DEFAULT_DECIMAL_DIFF, DEFAULT_THRESHOLDS);
+
+        // fallbackFee > maxFee should revert
+        vm.expectRevert(DynamicFee.InvalidFallbackFee.selector);
+        hook.configurePool(poolId, address(oracle), DEFAULT_MAX_FEE, DEFAULT_MAX_FEE + 1, DEFAULT_DECIMAL_DIFF, DEFAULT_THRESHOLDS);
     }
 
     // ═══════════════════════════ Swap Integration Tests ═══════════════════════════
 
     function test_fullSwap_AppliesFee() public {
-        // Simple swap should succeed with dynamic fee applied
         BalanceDelta delta = swapRouter.swap(
             poolKey,
             SwapParams({zeroForOne: true, amountSpecified: -1e16, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
@@ -274,15 +260,12 @@ contract DynamicFeeTest is Test {
     }
 
     function test_fullSwap_BothDirections() public {
-        // Swap zeroForOne
         swapRouter.swap(
             poolKey,
             SwapParams({zeroForOne: true, amountSpecified: -1e16, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             new bytes(0)
         );
-
-        // Swap oneForZero
         swapRouter.swap(
             poolKey,
             SwapParams({zeroForOne: false, amountSpecified: -1e16, sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1}),
@@ -292,7 +275,6 @@ contract DynamicFeeTest is Test {
     }
 
     function test_unconfiguredPool_Reverts() public {
-        // Create a new pool key with a different tick spacing so it's a different pool
         PoolKey memory unconfiguredKey = PoolKey({
             currency0: currency0,
             currency1: currency1,
@@ -300,7 +282,6 @@ contract DynamicFeeTest is Test {
             tickSpacing: int24(10),
             hooks: IHooks(address(hook))
         });
-        PoolId unconfiguredId = unconfiguredKey.toId();
 
         manager.initialize(unconfiguredKey, SQRT_PRICE_1_1);
         modifyLiquidityRouter.modifyLiquidity(
@@ -318,16 +299,46 @@ contract DynamicFeeTest is Test {
         );
     }
 
+    // ═══════════════════════════ Security Regression: Oracle Fallback ═══════════════════════════
+
+    function test_staleOracle_FallsBackInsteadOfReverting() public {
+        // Make a swap so pool is working
+        swapRouter.swap(
+            poolKey,
+            SwapParams({zeroForOne: true, amountSpecified: -1e16, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            new bytes(0)
+        );
+
+        // Make oracle stale
+        vm.warp(block.timestamp + 2 hours);
+
+        // Swap should still succeed using fallback fee (not revert)
+        BalanceDelta delta = swapRouter.swap(
+            poolKey,
+            SwapParams({zeroForOne: true, amountSpecified: -1e16, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            new bytes(0)
+        );
+        assertTrue(delta.amount0() != 0, "Swap should succeed with fallback fee");
+    }
+
+    // ═══════════════════════════ Security Regression: Direction at Parity ═══════════════════════════
+
+    function test_directionAtParity_ReturnsAway() public view {
+        // Pool price == oracle price → should be AWAY (conservative)
+        (, DeviationMonitor.Zone zone, FeeCalculator.Direction direction) = hook.previewFee(poolKey, true);
+        // At 1:1 pool with 1.0 oracle, direction should be AWAY
+        assertEq(uint256(direction), uint256(FeeCalculator.Direction.AWAY), "At parity, direction should be AWAY");
+    }
+
     // ═══════════════════════════ Fuzz Tests ═══════════════════════════
 
     function testFuzz_calculateDeviation(uint256 poolPrice, uint256 oraclePrice) public pure {
-        // Bound to reasonable ranges
         poolPrice = bound(poolPrice, 1e18, 1e22);
         oraclePrice = bound(oraclePrice, 1e18, 1e22);
 
         uint256 dev = DeviationMonitor.calculateDeviation(poolPrice, oraclePrice);
-        // Max deviation is bounded: |p-o|/o * 10000. With our bounds, max ratio is 10000x → 99990000 bps
-        // Just verify it doesn't revert and returns something reasonable
         assertTrue(dev <= 10_000 * 10_000, "Deviation calculation should not overflow");
     }
 
@@ -341,12 +352,10 @@ contract DynamicFeeTest is Test {
     function testFuzz_calculateFee(uint8 zoneRaw, bool isToward) public pure {
         uint8 zoneIdx = zoneRaw % 5;
         DeviationMonitor.Zone zone = DeviationMonitor.Zone(zoneIdx);
-        FeeCalculator.Direction dir =
-            isToward ? FeeCalculator.Direction.TOWARD : FeeCalculator.Direction.AWAY;
+        FeeCalculator.Direction dir = isToward ? FeeCalculator.Direction.TOWARD : FeeCalculator.Direction.AWAY;
         uint24 fee = FeeCalculator.calculateFee(zone, dir, 20_000);
         assertTrue(fee > 0 && fee <= 20_000, "Fee should be within bounds");
     }
 
-    // Helper to receive ETH
     receive() external payable {}
 }

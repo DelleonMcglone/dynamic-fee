@@ -12,12 +12,14 @@ library DeviationMonitor {
         EXTREME   // >10%
     }
 
+    error ZeroOraclePrice();
+
     uint256 internal constant BPS_BASE = 10_000;
 
     /// @notice Computes |poolPrice − oraclePrice| / oraclePrice in basis points.
-    /// @dev Uses unchecked where overflow is impossible (prices are uint256 from oracle).
+    /// @dev Reverts if oraclePrice is zero (broken oracle should never reach this point).
     function calculateDeviation(uint256 poolPrice, uint256 oraclePrice) internal pure returns (uint256 deviationBps) {
-        if (oraclePrice == 0) return 0;
+        if (oraclePrice == 0) revert ZeroOraclePrice();
         uint256 diff = poolPrice > oraclePrice ? poolPrice - oraclePrice : oraclePrice - poolPrice;
         deviationBps = (diff * BPS_BASE) / oraclePrice;
     }

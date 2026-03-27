@@ -14,7 +14,6 @@ import {SwapParams} from "v4-core/types/PoolOperation.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
-import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {FullMath} from "v4-core/libraries/FullMath.sol";
 
 import {OracleManager} from "./libraries/OracleManager.sol";
@@ -28,7 +27,6 @@ import {FeeCalculator} from "./libraries/FeeCalculator.sol";
 contract DynamicFee is BaseHook, Ownable {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
-    using OracleManager for address;
     using DeviationMonitor for uint256;
 
     // ── Structs ──
@@ -36,13 +34,15 @@ contract DynamicFee is BaseHook, Ownable {
     struct PoolConfig {
         address oracle; // Chainlink price feed
         uint24 maxFee; // Max fee in hundredths-of-bip (default 20_000 = 200 bps)
+        uint24 fallbackFee; // Fee to use when oracle is stale/unavailable (hundredths-of-bip)
+        int8 decimalDiff; // token0Decimals - token1Decimals (normalises sqrtPriceX96 to oracle units)
         uint256[4] zoneThresholds; // [tight, normal, elevated, high] in bps
         bool initialized;
     }
 
     // ── Events ──
 
-    event PoolConfigured(PoolId indexed poolId, address oracle, uint24 maxFee);
+    event PoolConfigured(PoolId indexed poolId, address oracle, uint24 maxFee, uint24 fallbackFee, int8 decimalDiff);
     event ZoneTransition(PoolId indexed poolId, DeviationMonitor.Zone from, DeviationMonitor.Zone to);
     event FeeApplied(
         PoolId indexed poolId,
@@ -50,6 +50,7 @@ contract DynamicFee is BaseHook, Ownable {
         FeeCalculator.Direction direction,
         uint24 fee
     );
+    event OracleFallback(PoolId indexed poolId, uint24 fallbackFee);
 
     // ── Errors ──
 
@@ -57,6 +58,7 @@ contract DynamicFee is BaseHook, Ownable {
     error InvalidOracleAddress();
     error InvalidMaxFee();
     error InvalidThresholds();
+    error InvalidFallbackFee();
 
     // ── Constants ──
 
@@ -77,7 +79,7 @@ contract DynamicFee is BaseHook, Ownable {
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
-            beforeInitialize: true,
+            beforeInitialize: false,
             afterInitialize: false,
             beforeAddLiquidity: false,
             afterAddLiquidity: false,
@@ -96,16 +98,24 @@ contract DynamicFee is BaseHook, Ownable {
 
     // ── Admin ──
 
-    /// @notice Configure a pool's oracle and fee parameters. Can be called before
-    ///         pool initialization or updated later by the owner.
+    /// @notice Configure a pool's oracle and fee parameters.
+    /// @param poolId The pool to configure.
+    /// @param oracle Chainlink aggregator address.
+    /// @param maxFee Maximum dynamic fee (hundredths-of-bip).
+    /// @param fallbackFee Fee charged when the oracle is stale/unavailable (hundredths-of-bip).
+    /// @param decimalDiff token0Decimals − token1Decimals (e.g. 12 for WETH(18)/USDC(6)).
+    /// @param thresholds Ascending zone boundaries in bps: [tight, normal, elevated, high].
     function configurePool(
         PoolId poolId,
         address oracle,
         uint24 maxFee,
+        uint24 fallbackFee,
+        int8 decimalDiff,
         uint256[4] calldata thresholds
     ) external onlyOwner {
         if (oracle == address(0)) revert InvalidOracleAddress();
         if (maxFee == 0 || maxFee > LPFeeLibrary.MAX_LP_FEE) revert InvalidMaxFee();
+        if (fallbackFee == 0 || fallbackFee > maxFee) revert InvalidFallbackFee();
         if (thresholds[0] >= thresholds[1] || thresholds[1] >= thresholds[2] || thresholds[2] >= thresholds[3]) {
             revert InvalidThresholds();
         }
@@ -113,25 +123,16 @@ contract DynamicFee is BaseHook, Ownable {
         configs[poolId] = PoolConfig({
             oracle: oracle,
             maxFee: maxFee,
+            fallbackFee: fallbackFee,
+            decimalDiff: decimalDiff,
             zoneThresholds: thresholds,
             initialized: true
         });
 
-        emit PoolConfigured(poolId, oracle, maxFee);
+        emit PoolConfigured(poolId, oracle, maxFee, fallbackFee, decimalDiff);
     }
 
     // ── Hook Implementations ──
-
-    /// @notice Called before pool initialization. Decodes hookData to configure pool.
-    function beforeInitialize(address, PoolKey calldata key, uint160)
-        external
-        override
-        onlyPoolManager
-        returns (bytes4)
-    {
-        // hookData is optional during initialize — pool can also be configured via configurePool
-        return IHooks.beforeInitialize.selector;
-    }
 
     /// @notice Returns ZERO_DELTA and the dynamic fee with OVERRIDE_FEE_FLAG.
     function beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata)
@@ -145,14 +146,21 @@ contract DynamicFee is BaseHook, Ownable {
     }
 
     /// @dev Computes the dynamic fee for a swap, emitting the FeeApplied event.
+    ///      Falls back to a conservative flat fee if the oracle is stale or unavailable.
     function _computeFee(PoolKey calldata key, bool zeroForOne) internal returns (uint24 fee) {
         PoolId poolId = key.toId();
         PoolConfig storage config = configs[poolId];
         if (!config.initialized) revert PoolNotConfigured(poolId);
 
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
-        uint256 poolPrice = _sqrtPriceX96ToPrice(sqrtPriceX96);
-        uint256 oraclePrice = config.oracle.getOraclePrice();
+        uint256 poolPrice = _sqrtPriceX96ToPrice(sqrtPriceX96, config.decimalDiff);
+
+        // Try oracle — fall back to flat fee on any failure (stale, invalid, unreachable)
+        (bool oracleOk, uint256 oraclePrice) = OracleManager.safeGetOraclePrice(config.oracle);
+        if (!oracleOk) {
+            emit OracleFallback(poolId, config.fallbackFee);
+            return config.fallbackFee;
+        }
 
         DeviationMonitor.Zone zone = DeviationMonitor.classifyZone(
             DeviationMonitor.calculateDeviation(poolPrice, oraclePrice), config.zoneThresholds
@@ -164,6 +172,7 @@ contract DynamicFee is BaseHook, Ownable {
     }
 
     /// @notice After swap: recalculate zone and emit transition if changed.
+    ///         Silently skips zone update if the oracle is unavailable (does not block swaps).
     function afterSwap(
         address,
         PoolKey calldata key,
@@ -175,18 +184,21 @@ contract DynamicFee is BaseHook, Ownable {
         PoolConfig storage config = configs[poolId];
 
         if (config.initialized) {
-            (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
-            uint256 poolPrice = _sqrtPriceX96ToPrice(sqrtPriceX96);
-            uint256 oraclePrice = config.oracle.getOraclePrice();
+            (bool oracleOk, uint256 oraclePrice) = OracleManager.safeGetOraclePrice(config.oracle);
+            if (oracleOk) {
+                (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+                uint256 poolPrice = _sqrtPriceX96ToPrice(sqrtPriceX96, config.decimalDiff);
 
-            uint256 deviationBps = DeviationMonitor.calculateDeviation(poolPrice, oraclePrice);
-            DeviationMonitor.Zone newZone = DeviationMonitor.classifyZone(deviationBps, config.zoneThresholds);
+                uint256 deviationBps = DeviationMonitor.calculateDeviation(poolPrice, oraclePrice);
+                DeviationMonitor.Zone newZone = DeviationMonitor.classifyZone(deviationBps, config.zoneThresholds);
 
-            DeviationMonitor.Zone oldZone = currentZones[poolId];
-            if (newZone != oldZone) {
-                currentZones[poolId] = newZone;
-                emit ZoneTransition(poolId, oldZone, newZone);
+                DeviationMonitor.Zone oldZone = currentZones[poolId];
+                if (newZone != oldZone) {
+                    currentZones[poolId] = newZone;
+                    emit ZoneTransition(poolId, oldZone, newZone);
+                }
             }
+            // Oracle unavailable — skip zone update, don't block the swap
         }
 
         return (IHooks.afterSwap.selector, 0);
@@ -205,8 +217,8 @@ contract DynamicFee is BaseHook, Ownable {
         if (!config.initialized) revert PoolNotConfigured(poolId);
 
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
-        poolPrice = _sqrtPriceX96ToPrice(sqrtPriceX96);
-        oraclePrice = config.oracle.getOraclePrice();
+        poolPrice = _sqrtPriceX96ToPrice(sqrtPriceX96, config.decimalDiff);
+        oraclePrice = OracleManager.getOraclePrice(config.oracle);
         deviationBps = DeviationMonitor.calculateDeviation(poolPrice, oraclePrice);
         zone = DeviationMonitor.classifyZone(deviationBps, config.zoneThresholds);
     }
@@ -222,8 +234,8 @@ contract DynamicFee is BaseHook, Ownable {
         if (!config.initialized) revert PoolNotConfigured(poolId);
 
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
-        uint256 poolPrice = _sqrtPriceX96ToPrice(sqrtPriceX96);
-        uint256 oraclePrice = config.oracle.getOraclePrice();
+        uint256 poolPrice = _sqrtPriceX96ToPrice(sqrtPriceX96, config.decimalDiff);
+        uint256 oraclePrice = OracleManager.getOraclePrice(config.oracle);
 
         uint256 deviationBps = DeviationMonitor.calculateDeviation(poolPrice, oraclePrice);
         zone = DeviationMonitor.classifyZone(deviationBps, config.zoneThresholds);
@@ -233,30 +245,39 @@ contract DynamicFee is BaseHook, Ownable {
 
     // ── Internal Helpers ──
 
-    /// @notice Converts sqrtPriceX96 to a price with 18 decimals.
-    /// @dev price = (sqrtPriceX96 / 2^96)^2 * 1e18
-    ///      = sqrtPriceX96^2 * 1e18 / 2^192
-    ///      Represents price of token0 in terms of token1.
-    function _sqrtPriceX96ToPrice(uint160 sqrtPriceX96) internal pure returns (uint256) {
+    /// @notice Converts sqrtPriceX96 to a price with 18 decimals, normalised for token decimals.
+    /// @dev price = (sqrtPriceX96 / 2^96)^2 * 10^(token0Decimals - token1Decimals) * 1e18
+    ///      Uses FullMath.mulDiv for overflow-safe 512-bit intermediate math.
+    function _sqrtPriceX96ToPrice(uint160 sqrtPriceX96, int8 decimalDiff) internal pure returns (uint256) {
         uint256 sqrtPrice = uint256(sqrtPriceX96);
-        // To avoid overflow: split multiplication
-        // price = sqrtPrice^2 * PRICE_PRECISION / Q96^2
-        // = (sqrtPrice * sqrtPrice / Q96) * PRICE_PRECISION / Q96
-        uint256 priceX96 = (sqrtPrice * sqrtPrice) / Q96;
-        return (priceX96 * PRICE_PRECISION) / Q96;
+        // price = sqrtPrice^2 * PRICE_PRECISION / Q96^2  (overflow-safe via FullMath)
+        uint256 priceX96 = FullMath.mulDiv(sqrtPrice, sqrtPrice, Q96);
+        uint256 rawPrice = FullMath.mulDiv(priceX96, PRICE_PRECISION, Q96);
+
+        // Normalise for token decimal difference (token0Decimals - token1Decimals)
+        if (decimalDiff > 0) {
+            rawPrice = rawPrice * 10 ** uint8(decimalDiff);
+        } else if (decimalDiff < 0) {
+            rawPrice = rawPrice / 10 ** uint8(-decimalDiff);
+        }
+        return rawPrice;
     }
 
     /// @notice Estimates swap direction relative to oracle.
     /// @dev zeroForOne pushes price down (token0→token1 = selling token0).
     ///      If pool price > oracle and swap pushes price down → TOWARD.
     ///      If pool price < oracle and swap pushes price up → TOWARD.
+    ///      If pool price == oracle, any swap moves AWAY (conservative).
     function _estimateDirection(uint256 poolPrice, uint256 oraclePrice, bool zeroForOne)
         internal
         pure
         returns (FeeCalculator.Direction)
     {
+        // At parity any movement increases deviation — charge the higher fee
+        if (poolPrice == oraclePrice) return FeeCalculator.Direction.AWAY;
+
         bool priceAboveOracle = poolPrice > oraclePrice;
-        bool swapPushesDown = zeroForOne; // zeroForOne = sell token0 = price goes down
+        bool swapPushesDown = zeroForOne;
 
         // Moving toward oracle when:
         // - Price above oracle AND swap pushes price down, OR

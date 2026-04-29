@@ -39,6 +39,10 @@ contract CreatePools is Script {
         vm.stopBroadcast();
     }
 
+    /// @dev `oracleFeed` is no longer used (P5-008: Chainlink dropped from
+    /// v2 scope). The parameter is kept for caller-signature stability;
+    /// callers should pass `address(0)`. Replace with `twapWindow` in the
+    /// next pass through this script.
     function _createPool(
         IPoolManager mgr,
         DynamicFee hook,
@@ -49,6 +53,7 @@ contract CreatePools is Script {
         int8 decimalDiff,
         uint160 sqrtPrice
     ) internal {
+        oracleFeed; // silence unused-var warning
         (address t0, address t1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(t0),
@@ -59,7 +64,9 @@ contract CreatePools is Script {
         });
         PoolId poolId = poolKey.toId();
 
-        hook.configurePool(poolId, oracleFeed, MAX_FEE, FALLBACK_FEE, decimalDiff, thresholds);
+        // Default 1-hour TWAP window for production deployments.
+        uint64 twapWindow = 1 hours;
+        hook.configurePool(poolId, twapWindow, MAX_FEE, FALLBACK_FEE, decimalDiff, thresholds);
         mgr.initialize(poolKey, sqrtPrice);
 
         console.log("Pool created. PoolId:");

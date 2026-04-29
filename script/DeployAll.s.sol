@@ -99,23 +99,27 @@ contract DeployAll is Script {
             tickLower: -887220, tickUpper: 887220, liquidityDelta: 10_000e18, salt: bytes32(0)
         });
 
+        // Default trailing TWAP window of 1 hour for production deployments;
+        // override per pool if a different volatility horizon is desired.
+        uint64 twapWindow = 1 hours;
+
         // Pool 1: ETH/USDC
         PoolKey memory k1 = _key(address(tWETH), address(tUSDC));
-        hook.configurePool(k1.toId(), address(ethOracle), 20_000, 3000, int8(0), t);
+        hook.configurePool(k1.toId(), twapWindow, 20_000, 3000, int8(0), t);
         manager.initialize(k1, SQRT_PRICE_1_1);
         liqRouter.modifyLiquidity(k1, lp, "");
         console2.log("ETH/USDC pool created + liquidity");
 
         // Pool 2: LINK/USDC
         PoolKey memory k2 = _key(address(tLINK), address(tUSDC));
-        hook.configurePool(k2.toId(), address(linkOracle), 20_000, 3000, int8(0), t);
+        hook.configurePool(k2.toId(), twapWindow, 20_000, 3000, int8(0), t);
         manager.initialize(k2, SQRT_PRICE_1_1);
         liqRouter.modifyLiquidity(k2, lp, "");
         console2.log("LINK/USDC pool created + liquidity");
 
         // Pool 3: ETH/LINK
         PoolKey memory k3 = _key(address(tWETH), address(tLINK));
-        hook.configurePool(k3.toId(), address(ethOracle), 20_000, 3000, int8(0), t);
+        hook.configurePool(k3.toId(), twapWindow, 20_000, 3000, int8(0), t);
         manager.initialize(k3, SQRT_PRICE_1_1);
         liqRouter.modifyLiquidity(k3, lp, "");
         console2.log("ETH/LINK pool created + liquidity");

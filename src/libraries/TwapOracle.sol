@@ -106,4 +106,18 @@ library TwapOracle {
         uint16 lastIdx = (buf.head + BUFFER_CAP - 1) % BUFFER_CAP;
         return buf.data[lastIdx];
     }
+
+    /// @notice Non-reverting check: would `consult(buf, nowTs, window)`
+    ///         succeed? Returns false when the buffer is empty or its
+    ///         oldest observation is younger than `window` seconds ago.
+    ///         Callers (e.g. DynamicFee) use this to fall back to a
+    ///         flat fee while the TWAP is still warming up.
+    function available(Buffer storage buf, uint64 nowTs, uint64 window) internal view returns (bool) {
+        uint16 size = buf.size;
+        if (size == 0) return false;
+        uint16 oldestIdx = (buf.head + BUFFER_CAP - size) % BUFFER_CAP;
+        uint64 oldestTs = buf.data[oldestIdx].timestamp;
+        uint64 cutoff = nowTs > window ? nowTs - window : 0;
+        return oldestTs <= cutoff;
+    }
 }

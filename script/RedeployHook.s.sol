@@ -29,7 +29,7 @@ contract RedeployHook is Script {
     uint160 constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
     uint160 constant HOOK_FLAGS = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
 
-    address constant OLD_HOOK   = 0xb662c25Fe810b766C7b94172d57E98D2698300C0;
+    address constant OLD_HOOK   = 0x9788B8495ebcEC1C1D1436681B0F56C6fc0140c0;
     address constant TWETH      = 0x839Cc782708f1768F0F7591eA0c7D08290ba2a3c;
     address constant TUSDC      = 0x8b6de320b93c2f8dEE5C9392A001E03CE6cc8Fe6;
     address constant TLINK      = 0x16538c37818d580F7f919D4583D7935C8624567E;

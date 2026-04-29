@@ -56,12 +56,10 @@ forge coverage
 
 | Contract | Address | BaseScan |
 |----------|---------|----------|
-| DynamicFee Hook | 0xb662c25Fe810b766C7b94172d57E98D2698300C0 | [view](https://sepolia.basescan.org/address/0xb662c25Fe810b766C7b94172d57E98D2698300C0) |
+| DynamicFee Hook | 0x9788B8495ebcEC1C1D1436681B0F56C6fc0140c0 | [view](https://sepolia.basescan.org/address/0x9788B8495ebcEC1C1D1436681B0F56C6fc0140c0) |
 | tWETH (Mock) | 0x839Cc782708f1768F0F7591eA0c7D08290ba2a3c | [view](https://sepolia.basescan.org/address/0x839Cc782708f1768F0F7591eA0c7D08290ba2a3c) |
 | tUSDC (Mock) | 0x8b6de320b93c2f8dEE5C9392A001E03CE6cc8Fe6 | [view](https://sepolia.basescan.org/address/0x8b6de320b93c2f8dEE5C9392A001E03CE6cc8Fe6) |
 | tLINK (Mock) | 0x16538c37818d580F7f919D4583D7935C8624567E | [view](https://sepolia.basescan.org/address/0x16538c37818d580F7f919D4583D7935C8624567E) |
-| ETH/USD Oracle (Mock) | 0x178eda13C9992B755940C3F85ef094b566D72099 | [view](https://sepolia.basescan.org/address/0x178eda13C9992B755940C3F85ef094b566D72099) |
-| LINK/USD Oracle (Mock) | 0xcbE2770BC2c72d59b5ED8373587c69160Bf02f9C | [view](https://sepolia.basescan.org/address/0xcbE2770BC2c72d59b5ED8373587c69160Bf02f9C) |
 | PoolModifyLiquidityTest | 0x9f12E9d064398e07153Ca7E1401C71343edB772B | [view](https://sepolia.basescan.org/address/0x9f12E9d064398e07153Ca7E1401C71343edB772B) |
 | PoolSwapTest | 0xF778eF19F4A0065430C55a7cD09d287368947C29 | [view](https://sepolia.basescan.org/address/0xF778eF19F4A0065430C55a7cD09d287368947C29) |
 | Uniswap v4 PoolManager | 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408 | [view](https://sepolia.basescan.org/address/0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408) |
@@ -75,9 +73,7 @@ forge coverage
 | Deploy tWETH | [0x0eeded…](https://sepolia.basescan.org/tx/0x0eeded013c0ce4cd138f1081ee8f7d2cc0e8eadf7f2ac3b4b40df2f5506161f1) |
 | Deploy tUSDC | [0xf7451c…](https://sepolia.basescan.org/tx/0xf7451c25a2bcaba5e6ee35804dabf067b74306938794f2625b823b762e61e15e) |
 | Deploy tLINK | [0x7ca07c…](https://sepolia.basescan.org/tx/0x7ca07cf33e8a8ee1eae3f8ab7e8b4f88e5b636930425a885dae006676e3dd97b) |
-| Deploy ETH/USD Oracle | [0x49322a…](https://sepolia.basescan.org/tx/0x49322aebeb448f0e9709e1ccb496d015ee5cd689fa9a03b715e5d263a685b3e4) |
-| Deploy LINK/USD Oracle | [0xe66bda…](https://sepolia.basescan.org/tx/0xe66bda56f08fac31a546d396a0db7c6a4951d41146c26670de12d8d4cff57a1e) |
-| Deploy DynamicFee Hook (CREATE2) | [0x82a2f9…](https://sepolia.basescan.org/tx/0x82a2f9f92a7087ce2282f474ab185a4aaa14de9cebab834c2dcba597711281af) |
+| Deploy DynamicFee Hook (CREATE2) | [0x73dbaf…](https://sepolia.basescan.org/tx/0x73dbaf21f1c403e919dd8808f183a70b23612b843b98bdb5cb222e9711058e24) |
 | Deploy LiquidityRouter | [0x6dd591…](https://sepolia.basescan.org/tx/0x6dd591d56a2c750814fb4cbaece047a983dd7d5ccd774ad2fe024205c666cba5) |
 | Deploy SwapRouter | [0xa8cf52…](https://sepolia.basescan.org/tx/0xa8cf52b5980d9410575d04f03896357f33c7b703d2ff9a5e67bc6cbd9139dc3b) |
 
@@ -85,15 +81,15 @@ forge coverage
 
 | Action | Transaction |
 |--------|-------------|
-| Configure ETH/USDC pool | [0x651048…](https://sepolia.basescan.org/tx/0x651048614253ab17975f7f45d3fcd4ea34adc21b320bbb27e08fac9b9f4f0818) |
-| Initialize ETH/USDC pool | [0x5c74b4…](https://sepolia.basescan.org/tx/0x5c74b40d46d8f22aa59d6c5cee81e7a639bed6c6f95ba5af0ab30b96ac041284) |
-| Add liquidity ETH/USDC | [0x4e805c…](https://sepolia.basescan.org/tx/0x4e805cafa60ac8414e464c6e1d668c34ea7b901b64e310b9251bed130eee37aa) |
-| Configure LINK/USDC pool | [0x21a031…](https://sepolia.basescan.org/tx/0x21a03182bbf4bb41e194fdf6254fdd70c67c1ebb4a3b42bd3f5f99a3068d3900) |
-| Initialize LINK/USDC pool | [0xccc694…](https://sepolia.basescan.org/tx/0xccc694552d142f425051dce35bd159038eb42675a15f56b4c5b8c068cfac136e) |
-| Add liquidity LINK/USDC | [0x95c24f…](https://sepolia.basescan.org/tx/0x95c24fa425412beca6dea06536989737e7055f236ff2f0c108d82b223c80fd44) |
-| Configure ETH/LINK pool | [0x372e36…](https://sepolia.basescan.org/tx/0x372e36ffbcd32b44b3fc78bddcdb808333f0d84328e4ed79dc2d74f95b48f719) |
-| Initialize ETH/LINK pool | [0x67b59b…](https://sepolia.basescan.org/tx/0x67b59b1185111b6e2dff944866ae5857cb0e5c4171df464773afcfb9488e5df3) |
-| Add liquidity ETH/LINK | [0xa4a18a…](https://sepolia.basescan.org/tx/0xa4a18a804699ce04a63d936c7879a6e7960d739b98eba24b4173afdcd76c6879) |
+| Configure ETH/USDC pool | [0xfa7cad…](https://sepolia.basescan.org/tx/0xfa7cadd58b821c136d93c76fb8197f3da60fc46c2dea12bd5a1f08ef4fc9bb9b) |
+| Initialize ETH/USDC pool | [0x16d5c1…](https://sepolia.basescan.org/tx/0x16d5c15bfcc1ce260f659713bec2ee4719a38efb3df751b2d2d254bf834badbd) |
+| Add liquidity ETH/USDC | [0x4a1bfa…](https://sepolia.basescan.org/tx/0x4a1bfa35d7b89458f6455daa85be791c81c3e0672aa077f0c58102a8cc17234f) |
+| Configure LINK/USDC pool | [0xaea5ce…](https://sepolia.basescan.org/tx/0xaea5ce81871794fdde5a7afb63226378d8bc4e9be8a7650564cda86d5b9561fc) |
+| Initialize LINK/USDC pool | [0x791a48…](https://sepolia.basescan.org/tx/0x791a48a0c06dda63973d374b4474654df7dda77180618547e9aa0d8ef729585c) |
+| Add liquidity LINK/USDC | [0xc37d54…](https://sepolia.basescan.org/tx/0xc37d54d9a03702728539385ba28167bedbcc0a808db74c959ae3dc6461d36066) |
+| Configure ETH/LINK pool | [0xa369f3…](https://sepolia.basescan.org/tx/0xa369f393f5a70d060d3221cb5726c195957bf8998d8d8fa4911965d5c278b798) |
+| Initialize ETH/LINK pool | [0x7cb552…](https://sepolia.basescan.org/tx/0x7cb55213c9cd782d74066060b124fb9dd3c8e3ec94751d45724bc84be9a54039) |
+| Add liquidity ETH/LINK | [0x4bd929…](https://sepolia.basescan.org/tx/0x4bd929ea2cefc55406d02474d3833005fd0c4e6a9c361c62ae221034153604b9) |
 
 ### Test Swaps
 

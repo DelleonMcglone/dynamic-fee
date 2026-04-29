@@ -29,13 +29,14 @@ contract RedeployHook is Script {
     uint160 constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
     uint160 constant HOOK_FLAGS = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
 
-    address constant OLD_HOOK    = 0xB52ed7864E737C0D701dB2f741637992920600C0;
-    address constant TWETH       = 0x839Cc782708f1768F0F7591eA0c7D08290ba2a3c;
-    address constant TUSDC       = 0x8b6de320b93c2f8dEE5C9392A001E03CE6cc8Fe6;
-    address constant TLINK       = 0x16538c37818d580F7f919D4583D7935C8624567E;
-    address constant ETH_ORACLE  = 0x178eda13C9992B755940C3F85ef094b566D72099;
-    address constant LINK_ORACLE = 0xcbE2770BC2c72d59b5ED8373587c69160Bf02f9C;
-    address constant LIQ_ROUTER  = 0x9f12E9d064398e07153Ca7E1401C71343edB772B;
+    address constant OLD_HOOK   = 0x9788B8495ebcEC1C1D1436681B0F56C6fc0140c0;
+    address constant TWETH      = 0x839Cc782708f1768F0F7591eA0c7D08290ba2a3c;
+    address constant TUSDC      = 0x8b6de320b93c2f8dEE5C9392A001E03CE6cc8Fe6;
+    address constant TLINK      = 0x16538c37818d580F7f919D4583D7935C8624567E;
+    address constant LIQ_ROUTER = 0x9f12E9d064398e07153Ca7E1401C71343edB772B;
+
+    // 1-hour trailing TWAP window — matches CreatePools.s.sol production default.
+    uint64 constant TWAP_WINDOW = 1 hours;
 
     DynamicFee public hook;
 
@@ -79,19 +80,19 @@ contract RedeployHook is Script {
         });
 
         PoolKey memory k1 = _key(TWETH, TUSDC);
-        hook.configurePool(k1.toId(), ETH_ORACLE, 20_000, 3000, int8(0), t);
+        hook.configurePool(k1.toId(), TWAP_WINDOW, 20_000, 3000, int8(0), t);
         manager.initialize(k1, SQRT_PRICE_1_1);
         liq.modifyLiquidity(k1, lp, "");
         console2.log("ETH/USDC pool created");
 
         PoolKey memory k2 = _key(TLINK, TUSDC);
-        hook.configurePool(k2.toId(), LINK_ORACLE, 20_000, 3000, int8(0), t);
+        hook.configurePool(k2.toId(), TWAP_WINDOW, 20_000, 3000, int8(0), t);
         manager.initialize(k2, SQRT_PRICE_1_1);
         liq.modifyLiquidity(k2, lp, "");
         console2.log("LINK/USDC pool created");
 
         PoolKey memory k3 = _key(TWETH, TLINK);
-        hook.configurePool(k3.toId(), ETH_ORACLE, 20_000, 3000, int8(0), t);
+        hook.configurePool(k3.toId(), TWAP_WINDOW, 20_000, 3000, int8(0), t);
         manager.initialize(k3, SQRT_PRICE_1_1);
         liq.modifyLiquidity(k3, lp, "");
         console2.log("ETH/LINK pool created");

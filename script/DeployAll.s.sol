@@ -170,14 +170,14 @@ contract DeployAll is Script {
     }
 
     function _mineSalt(address deployer, uint160 flags, bytes memory bytecode)
-        internal pure returns (address, bytes32)
+        internal view returns (address, bytes32)
     {
         uint160 mask = uint160(Hooks.ALL_HOOK_MASK);
         bytes32 h = keccak256(bytecode);
         for (uint256 i; i < 500_000; i++) {
             bytes32 s = bytes32(i);
             address a = address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), deployer, s, h)))));
-            if (uint160(a) & mask == flags) return (a, s);
+            if (uint160(a) & mask == flags && a.code.length == 0) return (a, s);
         }
         revert("Salt not found");
     }

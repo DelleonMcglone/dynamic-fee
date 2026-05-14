@@ -64,6 +64,15 @@ forge coverage
 | PoolSwapTest | 0xF778eF19F4A0065430C55a7cD09d287368947C29 | [view](https://sepolia.basescan.org/address/0xF778eF19F4A0065430C55a7cD09d287368947C29) |
 | Uniswap v4 PoolManager | 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408 | [view](https://sepolia.basescan.org/address/0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408) |
 
+## Deployed Contracts (Unichain Sepolia)
+
+| Contract | Address | Uniscan |
+|----------|---------|---------|
+| DynamicFee Hook | 0xa5eCBF949D964760f3F7805f59eb4AAc1f2500c0 | [view](https://sepolia.uniscan.xyz/address/0xa5eCBF949D964760f3F7805f59eb4AAc1f2500c0) |
+| Uniswap v4 PoolManager | 0x00B036B58a818B1BC34d502D3fE730Db729e62AC | [view](https://sepolia.uniscan.xyz/address/0x00B036B58a818B1BC34d502D3fE730Db729e62AC) |
+
+Deploy transaction: [0xcc6aca…](https://sepolia.uniscan.xyz/tx/0xcc6aca2af0c3746627bef9804718724788260a742924a28e27aab794409e5a30)
+
 ## Key Transactions
 
 ### Deployment

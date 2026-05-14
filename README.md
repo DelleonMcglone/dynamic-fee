@@ -69,9 +69,27 @@ forge coverage
 | Contract | Address | Uniscan |
 |----------|---------|---------|
 | DynamicFee Hook | 0xa5eCBF949D964760f3F7805f59eb4AAc1f2500c0 | [view](https://sepolia.uniscan.xyz/address/0xa5eCBF949D964760f3F7805f59eb4AAc1f2500c0) |
+| tWETH (Mock) | 0xC2EcA3888259398562ebe00C7039D52d8B93629F | [view](https://sepolia.uniscan.xyz/address/0xC2EcA3888259398562ebe00C7039D52d8B93629F) |
+| tUSDC (Mock) | 0xb6639242Ba9A4799317C889De4c13314dAC6748D | [view](https://sepolia.uniscan.xyz/address/0xb6639242Ba9A4799317C889De4c13314dAC6748D) |
+| tLINK (Mock) | 0x9f390f689954805A278b104cf5b5F59529cF779D | [view](https://sepolia.uniscan.xyz/address/0x9f390f689954805A278b104cf5b5F59529cF779D) |
+| PoolModifyLiquidityTest | 0x5fa728C0A5cfd51BEe4B060773f50554c0C8A7AB | [view](https://sepolia.uniscan.xyz/address/0x5fa728C0A5cfd51BEe4B060773f50554c0C8A7AB) |
+| PoolSwapTest | 0x9140a78c1A137c7fF1c151EC8231272aF78a99A4 | [view](https://sepolia.uniscan.xyz/address/0x9140a78c1A137c7fF1c151EC8231272aF78a99A4) |
 | Uniswap v4 PoolManager | 0x00B036B58a818B1BC34d502D3fE730Db729e62AC | [view](https://sepolia.uniscan.xyz/address/0x00B036B58a818B1BC34d502D3fE730Db729e62AC) |
 
-Deploy transaction: [0xcc6aca…](https://sepolia.uniscan.xyz/tx/0xcc6aca2af0c3746627bef9804718724788260a742924a28e27aab794409e5a30)
+### Key Transactions (Unichain Sepolia)
+
+| Action | Transaction |
+|--------|-------------|
+| Deploy DynamicFee Hook (CREATE2) | [0xcc6aca…](https://sepolia.uniscan.xyz/tx/0xcc6aca2af0c3746627bef9804718724788260a742924a28e27aab794409e5a30) |
+| Deploy tWETH | [0x7342d7…](https://sepolia.uniscan.xyz/tx/0x7342d79588a39f13e4b54f55dd25c1c52a045a48cb53372f1fdd4fcdb428dfb5) |
+| Deploy tUSDC | [0xc74196…](https://sepolia.uniscan.xyz/tx/0xc74196fa9190cbb594165da451dc46a852daffd2d46dee9ec4bbd13b4db9f313) |
+| Deploy tLINK | [0x67f9df…](https://sepolia.uniscan.xyz/tx/0x67f9df36669b105fd63a88be1967b1e6f290778e286a3401b4648b4e5eb24aab) |
+| Initialize ETH/USDC pool | [0xb0e383…](https://sepolia.uniscan.xyz/tx/0xb0e383625cf208a9313ffa9a07172a640158d49c5c09bc08dcea5383ea105be1) |
+| Add liquidity ETH/USDC | [0x3b938e…](https://sepolia.uniscan.xyz/tx/0x3b938ecf80633c124fa1fc18f98db8121563308ead4085567c1cce3e2d057f38) |
+| Initialize LINK/USDC pool | [0xdcf88a…](https://sepolia.uniscan.xyz/tx/0xdcf88a64ceadf2767c8163f1fa6da1f3149744541899409a7b4d49c7a0b2dc39) |
+| Add liquidity LINK/USDC | [0x67582c…](https://sepolia.uniscan.xyz/tx/0x67582c1222bd646be42580013de54cdb2434dad19559972a087c7dec3604081c) |
+| Initialize ETH/LINK pool | [0x7ec17e…](https://sepolia.uniscan.xyz/tx/0x7ec17e654f552943a55df20b96ca3819244ff581a1cf40fe5b9feb1adbaa5a5d) |
+| Add liquidity ETH/LINK | [0x11d375…](https://sepolia.uniscan.xyz/tx/0x11d3750717f1d82b4e061489bc1369a539fbd065c0d0b09f606aa656eb5d490f) |
 
 ## Key Transactions
 

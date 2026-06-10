@@ -73,6 +73,43 @@ forge coverage
 
 Deploy transaction: [0xcc6aca…](https://sepolia.uniscan.xyz/tx/0xcc6aca2af0c3746627bef9804718724788260a742924a28e27aab794409e5a30)
 
+## Deployed Contracts (Arc Testnet)
+
+Arc is Circle's USDC-native L1 (USDC is the gas token). Uniswap v4 is **not**
+pre-deployed on Arc testnet, so [`script/DeployArc.s.sol`](script/DeployArc.s.sol)
+stands up the full v4 stack (PoolManager + test routers), deploys freely-mintable
+mock **USDC** (6 dp) and mock **cirBTC** (8 dp), deploys the DynamicFee hook to a
+CREATE2 address carrying the `beforeSwap`/`afterSwap` flags, then creates and
+seeds a single dynamic-fee **USDC/cirBTC** pool and runs warm-up swaps.
+
+| Contract | Address | ArcScan |
+|----------|---------|---------|
+| DynamicFee Hook | 0xA1Be807481F532c074380FCcF05be5e2A3ec80C0 | [view](https://testnet.arcscan.app/address/0xA1Be807481F532c074380FCcF05be5e2A3ec80C0) |
+| USDC (mock, 6dp) | 0xFE3f00877d20Fb599351182EAef78DE3EF531dF6 | [view](https://testnet.arcscan.app/address/0xFE3f00877d20Fb599351182EAef78DE3EF531dF6) |
+| cirBTC (mock, 8dp) | 0xAeE5a58b0ae058bfd358CeeB72e4804C16d94F5E | [view](https://testnet.arcscan.app/address/0xAeE5a58b0ae058bfd358CeeB72e4804C16d94F5E) |
+| Uniswap v4 PoolManager | 0x7eA87A5919C119DC95855A0BE227fd3241c998F0 | [view](https://testnet.arcscan.app/address/0x7eA87A5919C119DC95855A0BE227fd3241c998F0) |
+| PoolModifyLiquidityTest | 0xdD225f3B7b621287657B490B3bC945E3ecfC8EbA | [view](https://testnet.arcscan.app/address/0xdD225f3B7b621287657B490B3bC945E3ecfC8EbA) |
+| PoolSwapTest | 0xAa096011E6604df33762d611cbBdaA0671F19Bdb | [view](https://testnet.arcscan.app/address/0xAa096011E6604df33762d611cbBdaA0671F19Bdb) |
+
+Hook deploy (CREATE2): [0x5f22bd…](https://testnet.arcscan.app/tx/0x5f22bdb8aedf79e0f926fe1136947cf7af16bf37e031297cd9e0df1526081831) · Deployer: `0xceeD79dBB39bA3C6Cddb57eb6343BE25FfD6dd56` · Pool: USDC/cirBTC (dynamic fee, tickSpacing 60)
+
+### Network Details
+
+- **Chain**: Arc Testnet (Chain ID `5042002`)
+- **RPC**: `https://rpc.testnet.arc.network`
+- **Explorer**: https://testnet.arcscan.app
+- **Faucet** (USDC for gas): https://faucet.circle.com
+- **Canonical USDC**: `0x3600000000000000000000000000000000000000` (6 dp)
+
+### Deploy
+
+```bash
+# Fund the deployer with testnet USDC (gas) from https://faucet.circle.com
+export ARC_TESTNET_RPC_URL=https://rpc.testnet.arc.network
+forge script script/DeployArc.s.sol:DeployArc \
+  --rpc-url arc_testnet --broadcast -vv
+```
+
 ## Key Transactions
 
 ### Deployment
